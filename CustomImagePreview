@@ -1,0 +1,89 @@
+import { CustomImage } from './customImage/CustomImage';
+import { CustomSwiperDataSourceObject, CustomSwiper } from './customImage/CustomSwiper';
+
+/**
+ *    图片预览组件  
+ */
+@Component
+export struct CustomImagePreview {
+  @Link show: boolean;
+  @Require @Prop imageList: string[]; //预览图片列表
+  @Require @Prop currentIndex: number; //当前预览第几张图
+  @State private swiperList: CustomSwiperDataSourceObject<string>[] = [];
+  private swiperController: SwiperController = new SwiperController() //轮播图翻页控制器
+
+  aboutToAppear(): void {
+    this.swiperList = this.imageList.map((item: string, _index: number) => {
+      let data: CustomSwiperDataSourceObject<string> = {
+        swiperItem: item
+      }
+      return data
+    })
+  }
+
+  @Builder
+  imageBuilder(item: CustomSwiperDataSourceObject<string>, index: number) {
+    Column() {
+      CustomImage({
+        imgUrl: item.swiperItem,
+        imgWidth: `100%`,
+        imgHeight: `100%`,
+        download: true,
+        imgBg: '#00000000',
+        canScal: true, //是否可以缩放，需要缩放时配置
+        onSlideSwiper: (isNextPage: boolean) => {
+          if (isNextPage) {
+            this.swiperController.showNext()
+          } else {
+            this.swiperController.showPrevious()
+          }
+        }
+      })
+        .onClick(() => {
+          this.show = false
+        })
+    }
+  }
+
+  build() {
+    Stack() {
+      Row() {
+        Text(`${this.currentIndex + 1}/${this.imageList.length}`)
+          .fontSize(vp2px(8))
+          .fontColor('#FFFFFF')
+          .textAlign(TextAlign.Center)
+      }
+      .width(`100%`)
+      .height(vp2px(10))
+      .position({
+        y: vp2px(0)
+      })
+      .zIndex(10)
+      .justifyContent(FlexAlign.Center)
+
+
+      Column() {
+        CustomSwiper({
+          swiperList: this.swiperList,
+          index: this.currentIndex,
+          // showIndicator: false,
+          autoPlay: false,
+          radius: 0,
+          swiperController: this.swiperController,
+          disableSwipe: true, //有图片缩放功能时，必须禁用组件滑动功能，  传值  true:禁用  false:启用
+          itemBuilder: (item: CustomSwiperDataSourceObject<string>, index: number) => {
+            this.imageBuilder(item, index);
+          },
+          onSwiperChange: (item: CustomSwiperDataSourceObject<ESObject>, index: number) => {
+            this.currentIndex = index;
+          }
+        })
+      }.width(`100%`)
+      .height(`100%`)
+      .justifyContent(FlexAlign.Center)
+      .zIndex(9)
+    }.width(`100%`)
+    .height(`100%`)
+    .backgroundColor('#000000')
+  }
+}

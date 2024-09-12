@@ -1,0 +1,25 @@
+@Observed
+export class CustomScaleModel {
+  public scaleValue: number //本次缩放值
+  public lastValue: number //记录上次缩放完后的缩放值
+  public maxScaleValue: number //最大默认缩放值
+  public minScaleValue: number = 1 //最小缩放值
+  public mediumScaleValue: number = 2.5 //双击的放大值
+
+  constructor(scaleValue: number = 1.0, lastValue: number = 1.0, maxScaleValue: number = 5,
+    mediumScaleValue: number = 2.5) {
+    this.scaleValue = scaleValue
+    this.lastValue = lastValue
+    this.maxScaleValue = maxScaleValue
+    this.mediumScaleValue = mediumScaleValue
+  }
+
+  reset(): void {
+    this.scaleValue = this.minScaleValue
+    this.lastValue = this.scaleValue
+  }
+
+  stash(): void {
+    this.lastValue = this.scaleValue
+  }
+}

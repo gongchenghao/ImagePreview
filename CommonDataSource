@@ -1,0 +1,156 @@
+@Observed
+export class ObservedArray<T> extends Array<T> {
+  constructor(args?: T[]) {
+    if (args instanceof Array) {
+      super(...args);
+    } else {
+      super();
+    }
+  }
+}
+
+@Observed
+export class CommonDataSource<T> implements IDataSource {
+  private dataArray: T[] = [];
+  private listeners: DataChangeListener[] = [];
+
+  constructor(element: T[]) {
+    this.dataArray = element;
+  }
+
+  public getData(index: number) {
+    return this.dataArray[index]
+  }
+
+  public totalCount(): number {
+    return this.dataArray.length;
+  }
+
+  public addData(index: number, data: T): void {
+    this.dataArray.splice(index, 0, data);
+    this.notifyDataAdd(index);
+  }
+
+  public addDatas(index: number, datas: T[]): void {
+    this.dataArray = this.dataArray.concat(datas);
+    this.notifyDataAdd(index);
+  }
+
+  public pushAllData(newData: ObservedArray<T>): void {
+    this.clear();
+    this.dataArray.push(...newData);
+    this.notifyDataReload();
+  }
+
+  //分页加载时不要使用，会重新加载所有数据导致卡顿
+  public appendAllData(addData: ObservedArray<T>): void {
+    this.dataArray.push(...addData);
+    this.notifyDataReload()
+  }
+
+  //分页加载时不要使用，会重新加载所有数据导致卡顿
+  public addAllDatas(datas: T[]): void {
+    datas.forEach(data => {
+      this.dataArray.push(data);
+    })
+    this.notifyDataReload();
+  }
+
+  public setData(datas: T[]): void {
+    this.clear();
+    this.addAllDatas(datas);
+  }
+
+  public pushData(data: T): void {
+    this.dataArray.push(data);
+    this.notifyDataAdd(this.dataArray.length - 1);
+  }
+
+  public deleteData(index: number): void {
+    this.dataArray.splice(index, 1);
+    this.notifyDataDelete(index)
+  }
+
+  public moveData(from: number, to: number): void {
+    let temp: T = this.dataArray[from];
+    this.dataArray[from] = this.dataArray[to];
+    this.dataArray[to] = temp;
+    this.notifyDataMove(from, to);
+  }
+
+  public changeData(index: number, data: T): void {
+    this.dataArray.splice(index, 1, data);
+    this.notifyDataChange(index);
+  }
+
+  public reloadData(): void {
+    this.notifyDataReload();
+  }
+
+  unregisterDataChangeListener(listener: DataChangeListener): void {
+    const pos = this.listeners.indexOf(listener);
+    if (pos >= 0) {
+      this.listeners.splice(pos, 1);
+    }
+  }
+
+  registerDataChangeListener(listener: DataChangeListener): void {
+    if (this.listeners.indexOf(listener) < 0) {
+      this.listeners.push(listener);
+    }
+  }
+
+  notifyDataReload(): void {
+    this.listeners.forEach((listener: DataChangeListener) => {
+      listener.onDataReloaded();
+    })
+  }
+
+  notifyDataAdd(index: number): void {
+    this.listeners.forEach((listener: DataChangeListener) => {
+      listener.onDataAdd(index);
+    })
+  }
+
+  notifyDataChange(index: number): void {
+    this.listeners.forEach((listener: DataChangeListener) => {
+      listener.onDataChange(index);
+    })
+  }
+
+  notifyDataDelete(index: number): void {
+    this.listeners.forEach((listener: DataChangeListener) => {
+      listener.onDataDelete(index);
+    })
+  }
+
+  notifyDataMove(from: number, to: number): void {
+    this.listeners.forEach((listener: DataChangeListener) => {
+      listener.onDataMove(from, to);
+    })
+  }
+
+  public notifyDatasetChange(operations: DataOperation[]): void {
+    this.listeners.forEach((listener: DataChangeListener) => {
+      listener.onDatasetChange(operations);
+    })
+  }
+
+  getDataArray() {
+    return this.dataArray
+  }
+
+  getItemIndex(t: T): number {
+    return this.dataArray.indexOf(t)
+  }
+
+  public clear(): void {
+    this.dataArray.splice(0, this.dataArray?.length)
+  }
+
+  public deleteAll(): void {
+    while (this.dataArray.length > 0) {
+      this.deleteData(0)
+    }
+  }
+}

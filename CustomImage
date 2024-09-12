@@ -1,0 +1,358 @@
+import { display, matrix4 } from '@kit.ArkUI';
+import { CustomScaleModel } from './CustomScaleModel';
+import { CustomOffsetModel } from './CustomOffsetModel';
+
+// 图片信息
+interface imgInfo {
+  width: number;
+  height: number;
+  componentWidth: number;
+  componentHeight: number;
+  loadingStatus: number;
+  contentWidth: number;
+  contentHeight: number;
+  contentOffsetX: number;
+  contentOffsetY: number;
+}
+
+/**
+ * KImage 图片组件
+ * @param imgUrl: PixelMap | ResourceStr | DrawableDescriptor
+ * @param imgWidth
+ * @param imgHeight
+ * @param imgAlt
+ * @param imgBorderRadius
+ * @param imgFit
+ * @param imgBg
+ * @callback onCompleteCall
+ * @callback onErrorCall
+ * */
+@Component
+export struct CustomImage {
+  // url
+  @Require @Prop imgUrl: PixelMap | ResourceStr | DrawableDescriptor
+  // 宽
+  @Prop imgWidth: Length
+  // 高
+  @Prop imgHeight: Length
+  //加载时的占位图
+  @Prop imgAlt: string | Resource = $r('app.media.imgError')
+  @Prop hasImgAlt: boolean = true
+  // 是否支持长按下载，默认不支持
+  @Prop download: boolean = true
+  // 圆角
+  @Prop imgBorderRadius: Length | BorderRadiuses
+  // ImageFit
+  @Prop imgFit: ImageFit = ImageFit.Contain
+  // 正常加载图片时的背景色，默认为 bg_lightgray4
+  @Prop imgBg: ResourceColor = "#F0F0F0"
+  // 加载图片异常时的背景色，按需配置
+  @Prop imgBgError: ResourceColor = "#F0F0F0"
+  // 图片宽高比
+  @Prop imgAspectRatio: number
+  @Prop imgBorder: BorderOptions | null
+  // 图片加载成功
+  onCompleteCall?: (imgInfo?: imgInfo) => void
+  // 图片加载失败
+  onErrorCall?: (error: ImageError) => void
+  // 加载失败
+  @State isError: Boolean = false
+  // 加载中
+  @State isLoading: Boolean = true
+  //============== 图片缩放相关 ==============
+  private screenWidth: number = 0
+  private screenHeight: number = 0
+  private imageWidth: number = 0
+  private imageHeight: number = 0
+  private maxScrollX: number = 0 //x轴最大移动距离
+  private maxScrollY: number = 0 //y轴最大移动距离
+  private onSlideSwiper?: (isNextPage: boolean) => void //轮播图切换
+  private mMinimumVelocity: number = 50 //手指抬起时可以进行惯性滑动的最小速度
+  private mMinimumSlideSwiper: number = 20 //手指抬起时可以进行惯性滑动的最小速度
+  private canScal: boolean = false //是否可以缩放
+  @State scaleInfo: CustomScaleModel = new CustomScaleModel(1.0, 1.0, 5.0)
+  @State offsetInfo: CustomOffsetModel = new CustomOffsetModel(0, 0)
+  @State matrix: matrix4.Matrix4Transit = matrix4.identity().copy()
+  @State isScaling: boolean = false //是否正在缩放，正在缩放时不允许滑动图片
+  @State isSliding: boolean = false //是否正在滑动
+
+  aboutToAppear(): void {
+    this.screenWidth = px2vp(display.getDefaultDisplaySync().width)
+    this.screenHeight = px2vp(display.getDefaultDisplaySync().height)
+  }
+
+  build() {
+    Stack() {
+      this.showImage()
+      if (this.isLoading || this.isError) {
+        if (this.hasImgAlt) {
+          this.showKfzLogo()
+        }
+      }
+    }
+    .width(this.imgWidth)
+    .height(this.imgHeight)
+    .clip(true)
+    .borderRadius(this.imgBorderRadius)
+    .backgroundColor(this.isError ? this.imgBgError : this.imgBg)
+    .alignContent(Alignment.Center)
+  }
+
+  // 占位图
+  @Builder
+  showKfzLogo() {
+    Image(this.imgAlt)
+      .fillColor("#FFFFFF")
+      .objectFit(ImageFit.Contain)
+      .width(typeof this.imgWidth === 'number' ? (this.imgWidth * 0.6) : '60%')
+      .height(typeof this.imgHeight === 'number' ? (this.imgHeight * 0.6) : '60%')
+      .aspectRatio(this.imgAspectRatio ?? null)
+  }
+
+  // 图片
+  @Builder
+  showImage() {
+    Image(this.imgUrl)
+      .width(this.imgWidth)
+      .height(this.imgHeight)
+      .objectFit(this.imgFit)
+      .aspectRatio(this.imgAspectRatio)
+      .border(this.imgBorder)
+      .borderRadius(this.imgBorderRadius)
+      .onComplete((imgInfo) => {
+        this.isLoading = false
+        this.isError = false
+        if (imgInfo) {
+          this.imageWidth = px2vp(imgInfo.contentWidth)
+          //得到图片绘制的高度 单位 vp的
+          this.imageHeight = px2vp(imgInfo.contentHeight)
+        }
+        if (this.onCompleteCall) {
+          this.onCompleteCall(imgInfo)
+        }
+      })
+      .onError((error) => {
+        this.isLoading = false
+        this.isError = true
+        if (this.onErrorCall) {
+          this.onErrorCall(error)
+        }
+      })
+      .transform(this.canScal ? this.matrix : null)// 通过matrix控制图片的缩放
+      .offset({
+        //通过offset控制图片的偏移
+        x: this.canScal ? this.offsetInfo.currentX : 0,
+        y: this.canScal ? this.offsetInfo.currentY : 0
+      })
+      .onImageGesture()
+      .onGestureJudgeBegin((gestureInfo: GestureInfo, event: BaseGestureEvent) => {
+        //捏合手势、滑动手势在非看大图模式下不响应
+        if ((gestureInfo.type == GestureControl.GestureType.PAN_GESTURE ||
+          gestureInfo.type == GestureControl.GestureType.PINCH_GESTURE) && !this.canScal) {
+          return GestureJudgeResult.REJECT
+        }
+        return GestureJudgeResult.CONTINUE
+      })
+
+  }
+
+  @Styles
+  onImageGesture(){
+    .gesture(
+      GestureGroup(GestureMode.Parallel,
+        //手指缩放
+        PinchGesture({ fingers: 2, distance: 1 })
+          .onActionUpdate((event: GestureEvent) => {
+            this.onPinchGestureUpDate(event)
+          })
+          .onActionEnd((event: GestureEvent) => {
+            this.scaleInfo.stash()
+            setTimeout(() => {
+              this.isScaling = false //缩放完成150毫秒后再重置，防止刚缩放完手指离开屏幕时有先后顺序导致的滑动
+            }, 150)
+          }),
+
+        //滑动图片
+        PanGesture({ fingers: 1, direction: PanDirection.All })
+          .onActionUpdate((event: GestureEvent) => {
+            this.onPanGestureUpDate(event)
+          })
+          .onActionEnd((event: GestureEvent) => {
+            if (this.isScaling) {
+              return
+            }
+            //惯性滑动动画：当手指抬起时执行，手指滑动过程中不执行
+            if (Math.max(Math.abs(event.velocityX), Math.abs(event.velocityY)) > this.mMinimumVelocity) {
+              animateTo({
+                duration: 300,
+                curve: Curve.EaseOut, //表示动画以低速结束
+                iterations: 1,
+                playMode: PlayMode.Normal,
+                onFinish: () => {
+                  //动画结束100毫秒之后再保存移动距离，立即保存的话会产生动画卡顿
+                  setTimeout(() => {
+                    this.offsetInfo.stash()
+                    this.isSliding = false
+                  }, 100)
+                }
+              }, () => {
+                this.setOffSet(event, true)
+              })
+            } else {
+              this.offsetInfo.stash() //动画结束
+            }
+          }),
+
+        //双击
+        TapGesture({ count: 2 })
+          .onAction((event: GestureEvent) => {
+            this.onDoubleClick()
+          })
+      )
+    )
+  }
+
+  onDoubleClick() {
+    if (this.scaleInfo.scaleValue > this.scaleInfo.minScaleValue) {
+      //双击时已经放大了
+      this.scaleInfo.scaleValue = this.scaleInfo.minScaleValue
+    } else {
+      this.scaleInfo.scaleValue = this.scaleInfo.mediumScaleValue
+    }
+    this.scaleInfo.lastValue = this.scaleInfo.scaleValue
+
+    //matrix默认缩放中心为组件中心
+    this.matrix = matrix4.identity().scale({
+      x: this.scaleInfo.scaleValue,
+      y: this.scaleInfo.scaleValue,
+    }).copy()
+  }
+
+  //手势缩放
+  onPinchGestureUpDate(event: GestureEvent) {
+    this.isScaling = true
+
+    this.scaleInfo.scaleValue = this.scaleInfo.lastValue * event.scale
+    // 缩放时不允许大于最大缩放，不允许小于默认大小
+    if (this.scaleInfo.scaleValue > this.scaleInfo.maxScaleValue) {
+      this.scaleInfo.scaleValue = this.scaleInfo.maxScaleValue
+    }
+    if (this.scaleInfo.scaleValue < this.scaleInfo.minScaleValue) {
+      this.scaleInfo.scaleValue = this.scaleInfo.minScaleValue
+    }
+    //matrix默认缩放中心为组件中心
+    this.matrix = matrix4.identity().scale({
+      x: this.scaleInfo.scaleValue,
+      y: this.scaleInfo.scaleValue,
+    }).copy()
+
+    //计算X轴/Y轴最大移动距离
+    this.maxScrollX = (this.imageWidth * this.scaleInfo.scaleValue - this.screenWidth) / 2
+    this.maxScrollY = (this.imageHeight * this.scaleInfo.scaleValue - this.screenHeight) / 2
+    if (this.maxScrollX < 0) {
+      this.maxScrollX = 0
+    }
+    if (this.maxScrollY < 0) {
+      this.maxScrollY = 0
+    }
+
+    if (event.scale < 1) { //缩小
+      if (this.offsetInfo.currentX > this.maxScrollX) {
+        this.offsetInfo.currentX = this.maxScrollX
+      }
+      if (this.offsetInfo.currentX < -this.maxScrollX) {
+        this.offsetInfo.currentX = -this.maxScrollX
+      }
+      if (this.offsetInfo.currentY > this.maxScrollY) {
+        this.offsetInfo.currentY = this.maxScrollY
+      }
+      if (this.offsetInfo.currentY < -this.maxScrollY) {
+        this.offsetInfo.currentY = -this.maxScrollY
+      }
+    }
+  }
+
+  //手势滑动
+  onPanGestureUpDate(event: GestureEvent) {
+    //正在缩放，不允许移动
+    if (this.isScaling) {
+      return
+    }
+
+    if (this.scaleInfo.scaleValue === this.scaleInfo.minScaleValue) {
+      this.onSlidPic(event) //还未缩放就进行滑动，则轮播图翻页
+    } else {
+      this.setOffSet(event, false)
+    }
+  }
+
+  //设置图片偏移量
+  setOffSet(event: GestureEvent, isFly: boolean) {
+    //滑动到边界之后进行二次滑动，则轮播图翻页：注意这里需要区分左右两个边界的单独滑动
+    if (this.offsetInfo.currentX == this.maxScrollX && event.offsetX > 0) {
+      this.onSlidPic(event)
+      return
+    }
+    if (this.offsetInfo.currentX == -this.maxScrollX && event.offsetX < 0) {
+      this.onSlidPic(event)
+      return
+    }
+
+    if (this.maxScrollX >= 0) { //缩放后图片宽度大于屏幕宽度
+      //X轴移动
+      let preScrollX = 0
+      if (isFly) {
+        preScrollX = this.offsetInfo.lastX + event.offsetX * 15 //预计X轴要移动的距离
+      } else {
+        preScrollX = this.offsetInfo.lastX + event.offsetX //预计X轴要移动的距离
+      }
+      if (Math.abs(preScrollX) < this.maxScrollX) {
+        this.offsetInfo.currentX = preScrollX
+      } else {
+        if (preScrollX < 0) {
+          this.offsetInfo.currentX = -this.maxScrollX
+        } else {
+          this.offsetInfo.currentX = this.maxScrollX
+        }
+      }
+      this.isSliding = true
+    }
+
+    //Y轴移动
+    if (this.maxScrollY >= 0) { //缩放后图片高度大于屏幕高度
+      let preScrollY = 0
+      if (isFly) {
+        preScrollY = this.offsetInfo.lastY + event.offsetY * 15 //预计Y轴要移动的距离
+      } else {
+        preScrollY = this.offsetInfo.lastY + event.offsetY //预计Y轴要移动的距离
+      }
+      if (Math.abs(preScrollY) < this.maxScrollY) {
+        this.offsetInfo.currentY = preScrollY
+      } else {
+        if (preScrollY < 0) {
+          this.offsetInfo.currentY = -this.maxScrollY
+        } else {
+          this.offsetInfo.currentY = this.maxScrollY
+        }
+      }
+      this.isSliding = true
+    }
+  }
+
+  //滑动图片时进行轮播图翻页
+  onSlidPic(event: GestureEvent) {
+    if (this.isSliding == false) { //一次滑动只允许翻一页
+      if (Math.abs(event.offsetX) > this.mMinimumSlideSwiper) { //必须大于最小滑动距离，才能翻页
+        if (this.onSlideSwiper != null) {
+          if (event.offsetX > 0) { //右滑
+            this.onSlideSwiper(false)
+          }
+          if (event.offsetX < 0) { //左滑
+            this.onSlideSwiper(true)
+          }
+        }
+        this.isSliding = true
+      }
+    }
+  }
+}

@@ -1,0 +1,89 @@
+import { CommonDataSource } from '../common/CommonDataSource';
+
+/**
+ * 通用轮播组件
+ * @param swiperList 轮播列表
+ * @param swiperHeight 轮播区域高度
+ * @param radius 圆角
+ */
+@Preview
+@Component
+export struct CustomSwiper {
+  // swiperList规定了 swiper 对象
+  @Prop swiperList: CustomSwiperDataSourceObject<ESObject>[];
+  // 当前在容器中显示的子组件的索引值。开始
+  @Prop index: number = 0;
+  // 是否自动播放。
+  @Prop autoPlay: boolean = true;
+  // 自动播放时播放的时间间隔
+  @Prop interval: number = 3000;
+  // 是否开启循环。
+  @Prop loop: boolean = true;
+  // 子组件切换的动画时长，单位为毫秒
+  @Prop duration: number = 400;
+  // 纵向滑动。
+  @Prop vertical: boolean = false;
+  // 子组件与子组件之间间隙。
+  @Prop itemSpace: number = 0;
+  //设置Swiper的动画曲线
+  @Prop curve: Curve | string | ICurve = Curve.Linear;
+  // 预加载子组件个数。
+  @Prop cachedCount: number = 0;
+  // 后边距，用于露出后一项的一小部分。
+  @Prop nextMargin: number = 0;
+  // 前边距，用于露出前一项的一小部分
+  @Prop prevMargin: number = 0;
+  // 整个 swiper圆角
+  @Prop radius: BorderRadiuses | Length = vp2px(8)
+  // 是否禁用组件滑动切换功能
+  @Prop disableSwipe: boolean = false
+  // 内容 builder
+  @Require @BuilderParam itemBuilder: (item: CustomSwiperDataSourceObject<ESObject>, index: number) => void
+  @State currentIndex: number = 0
+  // swiper 控制器
+  private swiperController: SwiperController = new SwiperController()
+  // swiper 数据
+  private data: CommonDataSource<CustomSwiperDataSourceObject<ESObject>> = new CommonDataSource([])
+  onSwiperChange?: (item: CustomSwiperDataSourceObject<ESObject>, index: number) => void
+
+  aboutToAppear(): void {
+    this.data = new CommonDataSource(this.swiperList)
+  }
+
+  build() {
+    Stack({
+      alignContent: Alignment.BottomEnd
+    }) {
+      Swiper(this.swiperController) {
+        LazyForEach(this.data, (item: CustomSwiperDataSourceObject<ESObject>, index: number) => {
+          this.itemBuilder(item, index);
+        }, (item: string) => item)
+      }
+      .index(this.index)
+      .autoPlay(this.autoPlay)
+      .interval(this.interval)
+      .loop(this.loop)
+      .duration(this.duration)
+      .vertical(this.vertical)
+      .itemSpace(this.itemSpace)
+      .cachedCount(this.cachedCount)
+      .curve(this.curve)
+      .nextMargin(this.nextMargin)
+      .prevMargin(this.prevMargin)
+      .borderRadius(this.radius)
+      .disableSwipe(this.disableSwipe)
+      .indicator(false) //不展示指示器
+      .onChange((_index: number) => {
+        this.currentIndex = _index;
+        if (this.onSwiperChange) {
+          this.onSwiperChange(this.swiperList[_index], _index)
+        }
+      })
+    }
+    .width('100%')
+  }
+}
+
+export interface CustomSwiperDataSourceObject<T> {
+  swiperItem: T;
+}
